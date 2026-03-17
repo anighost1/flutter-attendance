@@ -110,7 +110,7 @@ class _HomePageState extends State<HomePage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              "Hello, Anil 👋",
+              "Hello",
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
