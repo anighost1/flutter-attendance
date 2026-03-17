@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'home_page.dart';
 import 'profile_page.dart';
 import 'attendance_page.dart';
+import 'leave_page.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -53,26 +54,15 @@ class _MainScreenState extends State<MainScreen> {
   }
 }
 
-class LeavePage extends StatelessWidget {
-  const LeavePage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: Text("Leave Management", style: TextStyle(fontSize: 22)),
-      ),
-    );
-  }
-}
-
-// class ProfilePage extends StatelessWidget {
-//   const ProfilePage({super.key});
+// class LeavePage extends StatelessWidget {
+//   const LeavePage({super.key});
 
 //   @override
 //   Widget build(BuildContext context) {
 //     return const Scaffold(
-//       body: Center(child: Text("Profile Page", style: TextStyle(fontSize: 22))),
+//       body: Center(
+//         child: Text("Leave Management", style: TextStyle(fontSize: 22)),
+//       ),
 //     );
 //   }
 // }

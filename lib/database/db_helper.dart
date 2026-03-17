@@ -14,8 +14,9 @@ class DBHelper {
     String path = join(await getDatabasesPath(), 'attendance.db');
     return openDatabase(
       path,
-      version: 1,
+      version: 2, // Version 2 to include Leave Table
       onCreate: (db, version) async {
+        // Create Attendance Table
         await db.execute('''
           CREATE TABLE attendance(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -24,9 +25,77 @@ class DBHelper {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           )
         ''');
+
+        // Create Leaves Table
+        await db.execute('''
+          CREATE TABLE leaves(
+            type TEXT PRIMARY KEY, 
+            balance INTEGER
+          )
+        ''');
+
+        // Initialize default leave values
+        await _seedLeaves(db);
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          // If user is upgrading from version 1, add the leaves table
+          await db.execute('''
+            CREATE TABLE leaves(
+              type TEXT PRIMARY KEY, 
+              balance INTEGER
+            )
+          ''');
+          await _seedLeaves(db);
+        }
       },
     );
   }
+
+  /// Helper to insert initial leave records
+  Future<void> _seedLeaves(Database db) async {
+    await db.insert("leaves", {
+      "type": "SL",
+      "balance": 6,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    await db.insert("leaves", {
+      "type": "CL",
+      "balance": 6,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    await db.insert("leaves", {
+      "type": "PL",
+      "balance": 12,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
+  // ==========================================
+  // LEAVE MANAGEMENT METHODS
+  // ==========================================
+
+  /// Get all leave balances as a Map (e.g., {"SL": 6, "CL": 5})
+  Future<Map<String, int>> getAllLeaveBalances() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query("leaves");
+
+    return {
+      for (var item in maps) item['type'] as String: item['balance'] as int,
+    };
+  }
+
+  /// Update a specific leave balance
+  Future<int> updateLeaveBalance(String type, int newBalance) async {
+    final db = await database;
+    return await db.update(
+      "leaves",
+      {"balance": newBalance},
+      where: "type = ?",
+      whereArgs: [type],
+    );
+  }
+
+  // ==========================================
+  // ATTENDANCE METHODS (EXISTING)
+  // ==========================================
 
   /// Mark or Update Attendance
   Future<int> markAttendance(DateTime date, String status) async {
