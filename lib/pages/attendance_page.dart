@@ -57,11 +57,10 @@ class _AttendancePageState extends State<AttendancePage> {
     await _fetchAttendance();
   }
 
-  // --- UPDATED LOGIC: Auto-fill past days as ABSENT ---
+  // --- UPDATED LOGIC: Auto-fill past days as ABSENT (Saturdays included) ---
   Future<void> _fillMonth() async {
     setState(() => _isLoading = true);
 
-    // Limits the fill to the currently viewed month
     DateTime firstDayOfMonth = DateTime(_focusedDay.year, _focusedDay.month, 1);
     DateTime lastDayOfMonth = DateTime(
       _focusedDay.year,
@@ -69,17 +68,16 @@ class _AttendancePageState extends State<AttendancePage> {
       0,
     );
 
-    // Current date for comparison (Today at 00:00:00)
     DateTime now = DateTime.now();
     DateTime today = DateTime(now.year, now.month, now.day);
 
     for (int i = 0; i < lastDayOfMonth.day; i++) {
       DateTime day = firstDayOfMonth.add(Duration(days: i));
 
-      // Rule: Only older than today AND not a weekend AND not already marked
+      // Rule: Only older than today AND not a SUNDAY AND not already marked
+      // Saturday is now treated as a working day.
       if (day.isBefore(today)) {
-        if (day.weekday != DateTime.saturday &&
-            day.weekday != DateTime.sunday) {
+        if (day.weekday != DateTime.sunday) {
           final dateKey = DateTime(day.year, day.month, day.day);
           if (!_attendanceMap.containsKey(dateKey)) {
             await _dbHelper.markAttendance(day, "absent");
@@ -89,7 +87,9 @@ class _AttendancePageState extends State<AttendancePage> {
     }
     await _fetchAttendance();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Past missing days marked as Absent")),
+      const SnackBar(
+        content: Text("Past missing days marked as Absent (Sun skipped)"),
+      ),
     );
   }
 
@@ -249,6 +249,8 @@ class _AttendancePageState extends State<AttendancePage> {
                               formatButtonVisible: false,
                               titleCentered: true,
                             ),
+                            // Set weekend days to only Sunday so Saturday looks like a working day
+                            weekendDays: const [DateTime.sunday],
                             onDaySelected: (sel, foc) => _showActionSheet(sel),
                             onPageChanged: (foc) =>
                                 setState(() => _focusedDay = foc),
