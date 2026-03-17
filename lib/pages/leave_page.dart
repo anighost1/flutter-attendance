@@ -11,6 +11,7 @@ class LeavePage extends StatefulWidget {
 class _LeavePageState extends State<LeavePage> {
   final DBHelper _dbHelper = DBHelper();
   Map<String, int> balances = {"SL": 0, "CL": 0, "PL": 0};
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -19,28 +20,24 @@ class _LeavePageState extends State<LeavePage> {
   }
 
   Future<void> _loadBalances() async {
+    setState(() => _isLoading = true);
     final data = await _dbHelper.getRemainingBalances();
-    setState(() => balances = data);
+    setState(() {
+      balances = data;
+      _isLoading = false;
+    });
   }
 
-  // Dialog to edit the Total Quota
-  void _showEditQuotaDialog(String type, String label) {
-    final TextEditingController controller = TextEditingController();
-
+  void _editQuota(String type) {
+    final controller = TextEditingController();
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text("Edit Total $label"),
+        title: Text("Set Yearly $type Quota"),
         content: TextField(
           controller: controller,
           keyboardType: TextInputType.number,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: "Enter Total Yearly Quota",
-            hintText: "e.g. 12",
-            border: OutlineInputBorder(),
-          ),
+          decoration: const InputDecoration(hintText: "Enter total days"),
         ),
         actions: [
           TextButton(
@@ -49,11 +46,13 @@ class _LeavePageState extends State<LeavePage> {
           ),
           ElevatedButton(
             onPressed: () async {
-              int? newQuota = int.tryParse(controller.text);
-              if (newQuota != null) {
-                await _dbHelper.updateTotalQuota(type, newQuota);
+              if (controller.text.isNotEmpty) {
+                await _dbHelper.updateTotalQuota(
+                  type,
+                  int.parse(controller.text),
+                );
                 Navigator.pop(context);
-                _loadBalances(); // Refresh UI
+                _loadBalances();
               }
             },
             child: const Text("Save"),
@@ -66,66 +65,97 @@ class _LeavePageState extends State<LeavePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Leave Balance"), centerTitle: true),
-      body: RefreshIndicator(
-        onRefresh: _loadBalances,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            const Padding(
-              padding: EdgeInsets.only(bottom: 16.0, left: 4),
-              child: Text(
-                "Remaining Days",
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey,
+      backgroundColor: const Color(0xFFF3F6F9),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : CustomScrollView(
+              slivers: [
+                SliverAppBar(
+                  expandedHeight: 80,
+                  pinned: true,
+                  backgroundColor: const Color(0xFFF3F6F9),
+                  title: const Text(
+                    "Leave Balances",
+                    style: TextStyle(
+                      color: Colors.black,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
-              ),
+                SliverList(
+                  delegate: SliverChildListDelegate([
+                    _leaveCard(
+                      "SL",
+                      "Sick Leave",
+                      balances['SL']!,
+                      Colors.orange,
+                    ),
+                    _leaveCard(
+                      "CL",
+                      "Casual Leave",
+                      balances['CL']!,
+                      Colors.blue,
+                    ),
+                    _leaveCard(
+                      "PL",
+                      "Privileged Leave",
+                      balances['PL']!,
+                      Colors.green,
+                    ),
+                  ]),
+                ),
+              ],
             ),
-            _buildCard("SL", "Sick Leave", balances['SL']!, Colors.orange),
-            _buildCard("CL", "Casual Leave", balances['CL']!, Colors.blue),
-            _buildCard("PL", "Privileged Leave", balances['PL']!, Colors.green),
-            const SizedBox(height: 20),
-            const Center(
-              child: Text(
-                "Tip: Click the edit icon to change your total yearly quota.",
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
-  Widget _buildCard(String type, String label, int count, Color color) {
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        title: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: const Text("Remaining balance"),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              "$count",
-              style: TextStyle(
-                color: color,
-                fontWeight: FontWeight.bold,
-                fontSize: 24,
+  Widget _leaveCard(String type, String label, int count, Color col) {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            ),
-            const SizedBox(width: 10),
-            IconButton(
-              icon: const Icon(Icons.edit_note, color: Colors.grey),
-              onPressed: () => _showEditQuotaDialog(type, label),
-            ),
-          ],
-        ),
+              const Text(
+                "Remaining Balance",
+                style: TextStyle(color: Colors.grey),
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              Text(
+                "$count",
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: col,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.edit_outlined, size: 18),
+                onPressed: () => _editQuota(type),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

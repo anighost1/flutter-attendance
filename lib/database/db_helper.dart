@@ -1,8 +1,13 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import 'package:intl/intl.dart';
 
 class DBHelper {
+  static final DBHelper _instance = DBHelper._internal();
   static Database? _database;
+
+  factory DBHelper() => _instance;
+  DBHelper._internal();
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -11,141 +16,104 @@ class DBHelper {
   }
 
   Future<Database> _initDB() async {
-    String path = join(await getDatabasesPath(), 'attendance.db');
-    return openDatabase(
+    String path = join(await getDatabasesPath(), 'attendance_app.db');
+    return await openDatabase(
       path,
-      version: 3,
+      version: 1,
       onCreate: (db, version) async {
         await db.execute('''
-          CREATE TABLE attendance(
+          CREATE TABLE attendance (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             attendance_date TEXT UNIQUE,
             status TEXT,
-            leave_type TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            leave_type TEXT
           )
         ''');
-        await db.execute(
-          'CREATE TABLE leaves(type TEXT PRIMARY KEY, total_quota INTEGER)',
-        );
-        await _seedLeaves(db);
-      },
-      onUpgrade: (db, oldVersion, newVersion) async {
-        if (oldVersion < 3) {
-          try {
-            await db.execute(
-              'ALTER TABLE attendance ADD COLUMN leave_type TEXT',
-            );
-          } catch (_) {}
-          try {
-            await db.execute(
-              'CREATE TABLE IF NOT EXISTS leaves(type TEXT PRIMARY KEY, total_quota INTEGER)',
-            );
-          } catch (_) {}
-          await _seedLeaves(db);
-        }
+        await db.execute('''
+          CREATE TABLE leave_quota (
+            type TEXT PRIMARY KEY,
+            total_days INTEGER
+          )
+        ''');
+        // Initialize default quotas
+        await db.insert('leave_quota', {'type': 'SL', 'total_days': 12});
+        await db.insert('leave_quota', {'type': 'CL', 'total_days': 12});
+        await db.insert('leave_quota', {'type': 'PL', 'total_days': 15});
       },
     );
   }
 
-  Future<void> _seedLeaves(Database db) async {
-    await db.insert("leaves", {
-      "type": "SL",
-      "total_quota": 6,
-    }, conflictAlgorithm: ConflictAlgorithm.ignore);
-    await db.insert("leaves", {
-      "type": "CL",
-      "total_quota": 6,
-    }, conflictAlgorithm: ConflictAlgorithm.ignore);
-    await db.insert("leaves", {
-      "type": "PL",
-      "total_quota": 12,
-    }, conflictAlgorithm: ConflictAlgorithm.ignore);
-  }
-
-  Future<Map<String, int>> getRemainingBalances() async {
-    final db = await database;
-    final List<Map<String, dynamic>> quotaMaps = await db.query("leaves");
-    final List<Map<String, dynamic>> usedMaps = await db.rawQuery('''
-      SELECT leave_type, COUNT(*) as used FROM attendance 
-      WHERE status = 'leave' AND leave_type IS NOT NULL GROUP BY leave_type
-    ''');
-
-    Map<String, int> balances = {};
-    for (var row in quotaMaps) {
-      String type = row['type'];
-      int total = row['total_quota'];
-      int used = 0;
-      for (var u in usedMaps) {
-        if (u['leave_type'] == type) used = u['used'];
-      }
-      balances[type] = total - used;
-    }
-    return balances;
-  }
-
+  // Mark attendance with balance check
   Future<int> markAttendance(
     DateTime date,
     String status, {
     String? leaveType,
   }) async {
     final db = await database;
-    String dateStr = date.toIso8601String().split("T")[0];
+    String dateStr = DateFormat('yyyy-MM-dd').format(date);
 
-    if (status.toLowerCase() == "leave" && leaveType != null) {
+    if (status == 'leave' && leaveType != null) {
       final balances = await getRemainingBalances();
-      if ((balances[leaveType] ?? 0) <= 0) {
-        // Check if we are just updating an existing record of the same type
-        final existing = await db.query(
-          "attendance",
-          where: "attendance_date = ?",
-          whereArgs: [dateStr],
-        );
-        bool isUpdate =
-            existing.isNotEmpty && existing.first['leave_type'] == leaveType;
-        if (!isUpdate) return -1; // Block: No balance left
-      }
+      if ((balances[leaveType] ?? 0) <= 0)
+        return -1; // Error code for no balance
     }
 
-    return db.insert("attendance", {
-      "attendance_date": dateStr,
-      "status": status.toLowerCase(),
-      "leave_type": status.toLowerCase() == "leave" ? leaveType : null,
+    return await db.insert('attendance', {
+      'attendance_date': dateStr,
+      'status': status,
+      'leave_type': leaveType,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
-  Future<int> updateTotalQuota(String type, int newQuota) async {
+  // Clear all records for a specific month
+  Future<void> clearMonthAttendance(DateTime focusedDay) async {
     final db = await database;
-    return await db.update(
-      "leaves",
-      {"total_quota": newQuota},
-      where: "type = ?",
-      whereArgs: [type],
-    );
-  }
-
-  Future<int> deleteAttendance(DateTime date) async {
-    final db = await database;
-    return await db.delete(
-      "attendance",
-      where: "attendance_date = ?",
-      whereArgs: [date.toIso8601String().split("T")[0]],
+    String monthPattern = DateFormat('yyyy-MM').format(focusedDay);
+    await db.delete(
+      'attendance',
+      where: "attendance_date LIKE ?",
+      whereArgs: ["$monthPattern%"],
     );
   }
 
   Future<List<Map<String, dynamic>>> getAttendance() async {
     final db = await database;
-    return db.query("attendance", orderBy: "attendance_date DESC");
+    return await db.query('attendance');
   }
 
-  Future<int> clearMonthAttendance(int year, int month) async {
+  Future<void> updateTotalQuota(String type, int total) async {
     final db = await database;
-    String m = month.toString().padLeft(2, '0');
-    return await db.delete(
-      "attendance",
-      where:
-          "strftime('%Y', attendance_date) = ? AND strftime('%m', attendance_date) = ?",
-      whereArgs: [year.toString(), m],
+    await db.insert('leave_quota', {
+      'type': type,
+      'total_days': total,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<Map<String, int>> getRemainingBalances() async {
+    final db = await database;
+    final quotaData = await db.query('leave_quota');
+    final attendanceData = await db.query(
+      'attendance',
+      where: "status = 'leave'",
     );
+
+    Map<String, int> totals = {};
+    for (var row in quotaData) {
+      totals[row['type'] as String] = row['total_days'] as int;
+    }
+
+    Map<String, int> used = {"SL": 0, "CL": 0, "PL": 0};
+    for (var row in attendanceData) {
+      String? type = row['leave_type'] as String?;
+      if (type != null && used.containsKey(type)) {
+        used[type] = used[type]! + 1;
+      }
+    }
+
+    return {
+      "SL": (totals['SL'] ?? 0) - used['SL']!,
+      "CL": (totals['CL'] ?? 0) - used['CL']!,
+      "PL": (totals['PL'] ?? 0) - used['PL']!,
+    };
   }
 }
