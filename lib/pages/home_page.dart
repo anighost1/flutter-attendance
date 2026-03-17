@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
-import '../database/db_helper.dart'; // Ensure path is correct
+import '../database/db_helper.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -12,7 +12,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final DBHelper _dbHelper = DBHelper();
-  DateTime _today = DateTime.now();
+  DateTime _focusedDay = DateTime.now();
   Map<DateTime, String> _attendanceMap = {};
   bool _isLoading = true;
 
@@ -23,6 +23,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _loadData() async {
+    setState(() => _isLoading = true);
     final data = await _dbHelper.getAttendance();
     final Map<DateTime, String> freshMap = {};
 
@@ -41,7 +42,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final now = DateTime.now();
 
-    // Calculate Stats for current month
+    // Stats Calculation
     int present = _attendanceMap.entries
         .where((e) => e.key.month == now.month && e.value == "present")
         .length;
@@ -51,145 +52,189 @@ class _HomePageState extends State<HomePage> {
     int leave = _attendanceMap.entries
         .where((e) => e.key.month == now.month && e.value == "leave")
         .length;
-
-    int totalWorkingDays = present + absent + leave;
-    double percentage = totalWorkingDays > 0
-        ? (present / totalWorkingDays) * 100
-        : 0.0;
+    int total = present + absent + leave;
+    double pct = total > 0 ? (present / total) : 0.0;
 
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        title: const Text(
-          "Dashboard",
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        centerTitle: true,
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-      ),
+      backgroundColor: const Color(0xFFF3F6F9),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildHeader(now),
-                  const SizedBox(height: 24),
-                  _buildStatsGrid(present, absent, leave, percentage),
-                  const SizedBox(height: 32),
-                  const Text(
-                    "Recent Activity",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          : RefreshIndicator(
+              onRefresh: _loadData,
+              child: CustomScrollView(
+                slivers: [
+                  _buildSliverAppBar(now),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildPremiumStatsCard(present, absent, leave, pct),
+                          const SizedBox(height: 30),
+                          const Text(
+                            "Activity Overview",
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1A1C1E),
+                            ),
+                          ),
+                          const SizedBox(height: 15),
+                          _buildCalendarCard(),
+                          const SizedBox(height: 25),
+                          _buildLegend(),
+                          const SizedBox(height: 100), // Space for BottomNav
+                        ],
+                      ),
+                    ),
                   ),
-                  const SizedBox(height: 12),
-                  _buildCalendarCard(),
-                  const SizedBox(height: 20),
-                  _buildLegend(),
                 ],
               ),
             ),
     );
   }
 
-  Widget _buildHeader(DateTime now) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          DateFormat('EEEE, dd MMMM').format(now),
-          style: TextStyle(color: Colors.grey[600], fontSize: 14),
+  Widget _buildSliverAppBar(DateTime now) {
+    return SliverAppBar(
+      expandedHeight: 120,
+      floating: false,
+      pinned: true,
+      backgroundColor: const Color(0xFFF3F6F9),
+      elevation: 0,
+      flexibleSpace: FlexibleSpaceBar(
+        titlePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+        title: Column(
+          mainAxisAlignment: MainAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              "Hello",
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.blueGrey[900],
+              ),
+            ),
+            Text(
+              DateFormat('EEEE, dd MMM').format(now),
+              style: const TextStyle(fontSize: 10, color: Colors.blueGrey),
+            ),
+          ],
         ),
-        const Text(
-          "Welcome back, Anil!",
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-        ),
-      ],
+      ),
     );
   }
 
-  Widget _buildStatsGrid(int p, int a, int l, double pct) {
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
-      childAspectRatio: 1.4,
-      crossAxisSpacing: 16,
-      mainAxisSpacing: 16,
-      children: [
-        _statCard(
-          "Present",
-          p.toString(),
-          Colors.green,
-          Icons.check_circle_outline,
-        ),
-        _statCard("Absent", a.toString(), Colors.red, Icons.highlight_off),
-        _statCard("Leaves", l.toString(), Colors.blue, Icons.highlight_off),
-        _statCard(
-          "Attendance",
-          "${pct.toStringAsFixed(1)}%",
-          Colors.orange,
-          Icons.analytics_outlined,
-        ),
-      ],
-    );
-  }
-
-  Widget _statCard(String title, String value, Color color, IconData icon) {
+  Widget _buildPremiumStatsCard(int p, int a, int l, double pct) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          colors: [Colors.blue[900]!, Colors.blue[700]!],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(30),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.blue.withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Row(
         children: [
-          Icon(icon, color: color, size: 28),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: color,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _miniStat("Present", p.toString(), Colors.greenAccent),
+                const SizedBox(height: 12),
+                _miniStat("Absent", a.toString(), Colors.redAccent),
+                const SizedBox(height: 12),
+                _miniStat("Leaves", l.toString(), Colors.lightBlueAccent),
+              ],
+            ),
+          ),
+          Container(
+            height: 100,
+            width: 100,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white.withOpacity(0.1),
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                CircularProgressIndicator(
+                  value: pct,
+                  strokeWidth: 8,
+                  backgroundColor: Colors.white.withOpacity(0.2),
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                    Colors.greenAccent,
+                  ),
                 ),
-              ),
-              Text(
-                title,
-                style: TextStyle(
-                  color: Colors.grey[600],
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
+                Text(
+                  "${(pct * 100).toInt()}%",
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _miniStat(String label, String val, Color color) {
+    return Row(
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          "$label: ",
+          style: const TextStyle(color: Colors.white70, fontSize: 14),
+        ),
+        Text(
+          val,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildCalendarCard() {
     return Container(
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.grey.shade200),
+        borderRadius: BorderRadius.circular(25),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
       ),
       child: TableCalendar(
-        focusedDay: _today,
+        focusedDay: _focusedDay,
         firstDay: DateTime(2020),
         lastDay: DateTime(2030),
         calendarFormat: CalendarFormat.month,
@@ -197,6 +242,16 @@ class _HomePageState extends State<HomePage> {
           formatButtonVisible: false,
           titleCentered: true,
           titleTextStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
+        daysOfWeekStyle: const DaysOfWeekStyle(
+          weekdayStyle: TextStyle(
+            color: Colors.blueGrey,
+            fontWeight: FontWeight.bold,
+          ),
+          weekendStyle: TextStyle(
+            color: Colors.redAccent,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         calendarBuilders: CalendarBuilders(
           defaultBuilder: (context, day, focusedDay) {
@@ -209,12 +264,16 @@ class _HomePageState extends State<HomePage> {
 
               return Container(
                 margin: const EdgeInsets.all(6),
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.15),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: color, width: 1.5),
+                ),
                 child: Center(
                   child: Text(
                     "${day.day}",
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: color,
                       fontWeight: FontWeight.bold,
                       fontSize: 12,
                     ),
@@ -224,21 +283,44 @@ class _HomePageState extends State<HomePage> {
             }
             return null;
           },
+          todayBuilder: (context, day, focusedDay) {
+            return Center(
+              child: Container(
+                width: 35,
+                height: 35,
+                decoration: const BoxDecoration(
+                  color: Colors.orangeAccent,
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Text(
+                    "${day.day}",
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
   }
 
   Widget _buildLegend() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: const [
-        _LegendItem(color: Colors.green, label: "P"),
-        SizedBox(width: 16),
-        _LegendItem(color: Colors.red, label: "A"),
-        SizedBox(width: 16),
-        _LegendItem(color: Colors.blue, label: "L"),
-      ],
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: const [
+          _LegendItem(color: Colors.green, label: "Present"),
+          _LegendItem(color: Colors.red, label: "Absent"),
+          _LegendItem(color: Colors.blue, label: "Leave"),
+        ],
+      ),
     );
   }
 }
@@ -253,17 +335,17 @@ class _LegendItem extends StatelessWidget {
     return Row(
       children: [
         Container(
-          width: 12,
-          height: 12,
+          width: 10,
+          height: 10,
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
-        const SizedBox(width: 4),
+        const SizedBox(width: 6),
         Text(
           label,
           style: const TextStyle(
             fontSize: 12,
-            fontWeight: FontWeight.bold,
-            color: Colors.grey,
+            fontWeight: FontWeight.w600,
+            color: Colors.blueGrey,
           ),
         ),
       ],
