@@ -3,8 +3,13 @@ import 'package:permission_handler/permission_handler.dart';
 
 import 'pages/main_screen.dart';
 import 'services/auto_attendance_service.dart';
+import 'services/notification_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized(); 
+
+  await NotificationService.init(); // 👈 initialize notifications
+
   runApp(const MyApp());
 }
 
@@ -23,8 +28,9 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _initAutoAttendance() async {
-    // 👉 Request permission (required for WiFi BSSID)
+    // 👉 Request permissions
     await Permission.location.request();
+    await Permission.notification.request(); // add this (Android 13+)
 
     // 👉 Start auto attendance service
     AutoAttendanceService.start();

@@ -2,12 +2,13 @@ import 'dart:async';
 import 'package:intl/intl.dart';
 import '../database/db_helper.dart';
 import 'wifi_service.dart';
+import 'notification_service.dart';
 
 class AutoAttendanceService {
   static Timer? _timer;
   static final DBHelper _dbHelper = DBHelper();
 
-  static const Duration interval = Duration(seconds: 10);
+  static const Duration interval = Duration(seconds: 15);
 
   static void start() {
     _timer?.cancel();
@@ -44,6 +45,7 @@ class AutoAttendanceService {
 
       //Mark attendance automatically
       await _dbHelper.markAttendance(today, "present");
+      await NotificationService.showAttendanceMarked();
 
       print(
         "✅ Auto attendance marked for ${DateFormat('yyyy-MM-dd').format(today)}",
